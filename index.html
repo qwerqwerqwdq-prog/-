@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Карта Эндора</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a2a1f;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+            background: #2c3e2f;
+        }
+        .toggle-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            padding: 10px 15px;
+            border-radius: 40px;
+            display: flex;
+            gap: 12px;
+        }
+        button {
+            background: #2c3e2f;
+            border: none;
+            color: #f0e6a0;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 8px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid #c9a87b;
+        }
+        button:hover {
+            background: #4a6b4a;
+            color: #fff0b5;
+        }
+        button.active {
+            background: #b8860b;
+            color: white;
+            border-color: #ffd700;
+            box-shadow: 0 0 8px gold;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.5);
+            color: #ddd;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        .leaflet-control-zoom {
+            display: none;
+        }
+        .leaflet-control-attribution {
+            display: none !important;
+        }
+        .cities-control {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            padding: 12px 20px;
+            border: 1px solid #c9a87b;
+            color: #f5e6c4;
+            font-size: 14px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 180px;
+        }
+        .cities-control.visible {
+            display: flex;
+        }
+        .cities-control h4 {
+            margin: 0 0 5px;
+            color: #ffd966;
+            border-bottom: 1px solid #c9a87b;
+            padding-bottom: 4px;
+        }
+        .city-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+        .city-checkbox input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .city-checkbox label {
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .city-checkbox:hover {
+            background: rgba(255,255,255,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="toggle-panel">
+        <button id="btnRelief" class="active">🏔️ Рельеф</button>
+        <button id="btnCountries">⚜️ Страны</button>
+        <button id="btnFactions">⚔️ Фракции</button>
+    </div>
+    <div class="info">
+        🧭 Наведите на герб фракции — появится информация. Нажмите для перехода на страницу.
+    </div>
+    <div id="citiesPanel" class="cities-control">
+        <h4>🗺️ Фракции</h4>
+        <div id="citiesChecklist"></div>
+    </div>
+
+    <script>
+        const MAP_W = 4000;
+        const MAP_H = 2448;
+        
+        const citiesData = [
+            { name: "Ялекрия", px: 800, py: 1525, icon: "Yalekria.png", link: "https://vk.com/page-227907879_55698680", shortDesc: "Провинции Ялекрия — одна из самых стабильных провинций на юго-западе Империи", largeImage: "Yalekria.png" },
+            { name: "Орден «Северного орла»", px: 800, py: 675, icon: "Remtel.png", link: "https://vk.com/page-227907879_55695783", shortDesc: "Ремтэл - граница Империи, жизнь на острие меча", largeImage: "Remtel.png" },
+            { name: "Трибунал Священного Суда", px: 1150, py: 850, icon: "Zalarix.png", shortDesc: "Заларикс — провинция Империи с развитой железообрабатывающей отраслью." },
+            { name: "Домен Императора", px: 1460, py: 1350, icon: "armoria.png", shortDesc: "Малентий — закрытый древний город у Огненного моря. Столица императоров, где когда‑то в катакомбах держали драконов." },
+            { name: "Ревнители Веры", px: 1440, py: 1080, icon: "Valerie.png", shortDesc: "Валерика под управлением кардинала Доната Тоццо Покко ди Борхи стремится быть похожей на Тринн." },
+            { name: "Сигиллум", px: 1650, py: 1090, icon: "Xander.png", shortDesc: "Ксандер издавна был важным прибрежным городом, служившим воротами Империи Эндор на западных торгово-морских путях." },
+            { name: "Орден «Воноветус»", px: 1250, py: 1020, icon: "Yalekhiya.png", shortDesc: "Ялехия — среднезажиточная провинция в центре империи: её основной источник дохода — продажа древесины." },
+            { name: "Имперские псы", px: 850, py: 880, icon: "Caesar.png", shortDesc: "Цез — тихая провинция на северо‑западе империи с бедными землями и без значимых торговых путей, веками жившая за счёт труда пастухов и гончаров и исправно платившая налоги." },
+            { name: "Объединённые силы", px: 1190, py: 1315, icon: "Myrmillion.png", shortDesc: "Мирмиллион — богатая провинция с плодородными землями вокруг Лакуса и развитой системой орошения." },
+            { name: "Дом Валериев", px: 1135, py: 1510, icon: "Valeriopolis.png", shortDesc: "Валериополис — провинция, основанная как колония для ветеранов, прославилась культурой, в которой личные достоинства и соблюдение закона ценятся выше происхождения, а конфликты разрешаются в судах и на форумах." },
+            { name: "Дом Каллистов", px: 1390, py: 1700, icon: "Valentor.png", shortDesc: "Валентор — отдалённая провинция на юго‑востоке империи, основанная при династии Милтреев как символ нерушимости новой эпохи и названная в честь императора Милтрея." },
+            { name: "Неаполиния", px: 740, py: 1270, icon: "Neapolinia.png", shortDesc: "Провинция богата ресурсами — здесь есть шахты, каменоломни, леса, полноводные реки и холмы, а её население сочетает имперские традиции с наследием древнего народа Гебивов." },
+            { name: "Лимитаны", px: 1415, py: 700, icon: "Limitans.png", shortDesc: "Варатикс и Селан, долгое время бывшие тихим уголком Империи, пережили опустошение во времена Трианского похода, а после — экономический подъём благодаря торговле с соседней Республикой Аннуаренов." },
+            { name: "Тарнум", px: 1320, py: 1830, icon: "Tarnum.png", shortDesc: "Реталия прошла путь от тихого торгового края до мрачной провинции с культом силы и традиций под властью рода Тарнов." },
+            { name: "Клинки Де Ауре", px: 480, py: 1830, icon: "De_Aura.png", shortDesc: "В горах Карамидрана стоит оплот Черного дракона – древняя крепость в горах, восстановленная Вал'Кором, после захоронения Данте, стал базой для ордена, трудно доступной для чужаков." }
+        ];
+        
+        function toLeafletCoords(px, py) { return [MAP_H - py, px]; }
+        
+        const cities = citiesData.map(city => ({
+            ...city,
+            coords: toLeafletCoords(city.px, city.py),
+            visible: true
+        }));
+        
+        const layers = {
+            relief: 'Karta_relief.png',
+            countries: 'Karta_countries.png',
+            factions: 'Karta_factions.png'
+        };
+        
+        let map, currentOverlay, currentLayer = 'relief', markerGroup;
+        let markersMap = new Map();
+        let markersCreated = false; // флаг, что маркеры уже созданы
+        
+        function getPopupContent(city) {
+            const imgSrc = city.largeImage || city.icon;
+            return `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${imgSrc}" style="width: 60px; height: auto; border-radius: 8px; border: 1px solid #c9a87b;">
+                    <div>
+                        <h3 style="margin: 0 0 5px; color: #ffd966;">${city.name}</h3>
+                        <p style="margin: 0; font-size: 12px;">${city.shortDesc}</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function initMap() {
+            map = L.map('map', {
+                crs: L.CRS.Simple,
+                zoomControl: false,
+                attributionControl: false,
+                scrollWheelZoom: false,
+                doubleClickZoom: false,
+                boxZoom: false,
+                touchZoom: false,
+                dragging: true
+            });
+            const bounds = [[0, 0], [MAP_H, MAP_W]];
+            currentOverlay = L.imageOverlay(layers.relief, bounds, { opacity: 1 }).addTo(map);
+            map.fitBounds(bounds);
+            const fixedZoom = map.getZoom();
+            map.setMinZoom(fixedZoom);
+            map.setMaxZoom(fixedZoom);
+            
+            markerGroup = L.featureGroup().addTo(map);
+            // маркеры НЕ создаём здесь, только пустая группа
+        }
+        
+        function addMarkersToGroup() {
+            for (const city of cities) {
+                const iconSize = 100; // уменьшил с 100 для скорости
+                const customIcon = L.divIcon({
+                    html: `<img src="${city.icon}" style="width: ${iconSize}px; height: auto;">`,
+                    className: 'custom-marker',
+                    iconSize: [iconSize, iconSize],
+                    popupAnchor: [0, -iconSize/2]
+                });
+                const marker = L.marker(city.coords, { icon: customIcon });
+                const popupContent = getPopupContent(city);
+                marker.bindPopup(popupContent, { className: 'custom-popup' });
+                marker.on('mouseover', function() { this.openPopup(); });
+                marker.on('mouseout', function() { this.closePopup(); });
+                if (city.link && city.link.trim() !== '') {
+                    marker.on('click', () => { window.location.href = city.link; });
+                }
+                marker.addTo(markerGroup);
+                markersMap.set(city.name, marker);
+            }
+        }
+        
+        function updateMarkerVisibility(cityName, visible) {
+            const marker = markersMap.get(cityName);
+            if (!marker) return;
+            if (visible) {
+                if (!markerGroup.hasLayer(marker)) marker.addTo(markerGroup);
+            } else {
+                if (markerGroup.hasLayer(marker)) markerGroup.removeLayer(marker);
+            }
+        }
+        
+        function buildCitiesPanel() {
+            const container = document.getElementById('citiesChecklist');
+            container.innerHTML = '';
+            for (const city of cities) {
+                const div = document.createElement('div');
+                div.className = 'city-checkbox';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.id = `chk_${city.name.replace(/\s/g, '_')}`;
+                cb.checked = city.visible;
+                cb.addEventListener('change', (e) => {
+                    city.visible = e.target.checked;
+                    updateMarkerVisibility(city.name, city.visible);
+                });
+                const label = document.createElement('label');
+                label.htmlFor = cb.id;
+                label.textContent = city.name;
+                div.appendChild(cb);
+                div.appendChild(label);
+                container.appendChild(div);
+            }
+        }
+        
+        function setMarkersVisibility(visible) {
+            if (visible) {
+                if (!map.hasLayer(markerGroup)) markerGroup.addTo(map);
+                // ленивое создание маркеров – только если ещё не созданы
+                if (!markersCreated) {
+                    addMarkersToGroup();
+                    markersCreated = true;
+                }
+                const panel = document.getElementById('citiesPanel');
+                panel.classList.add('visible');
+                for (const city of cities) {
+                    updateMarkerVisibility(city.name, city.visible);
+                }
+            } else {
+                if (map.hasLayer(markerGroup)) map.removeLayer(markerGroup);
+                document.getElementById('citiesPanel').classList.remove('visible');
+            }
+        }
+        
+        function switchLayer(layerName, btnId) {
+            if (currentLayer === layerName) return;
+            currentLayer = layerName;
+            const bounds = [[0, 0], [MAP_H, MAP_W]];
+            map.removeLayer(currentOverlay);
+            currentOverlay = L.imageOverlay(layers[layerName], bounds, { opacity: 1 }).addTo(map);
+            map.fitBounds(bounds);
+            
+            if (layerName === 'factions') {
+                setMarkersVisibility(true);
+            } else {
+                setMarkersVisibility(false);
+            }
+            
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(btnId).classList.add('active');
+        }
+        
+        initMap();
+        buildCitiesPanel(); // строим панель чекбоксов (пока скрыта)
+        
+        document.getElementById('btnRelief').addEventListener('click', () => switchLayer('relief', 'btnRelief'));
+        document.getElementById('btnCountries').addEventListener('click', () => switchLayer('countries', 'btnCountries'));
+        document.getElementById('btnFactions').addEventListener('click', () => switchLayer('factions', 'btnFactions'));
+        
+        document.getElementById('citiesPanel').classList.remove('visible');
+    </script>
+</body>
+</html>
